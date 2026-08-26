@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Push Notification Test</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Push Test">
+<style>
+  body{ font-family:-apple-system,sans-serif; max-width:480px; margin:0 auto; padding:20px; background:#EEF2F0; color:#1C2430; }
+  h1{ font-size:20px; }
+  .step{ background:#fff; border-radius:14px; padding:16px; margin-bottom:14px; border:1px solid #DCE3E0; }
+  .step h2{ font-size:15px; margin:0 0 8px; }
+  .step p{ font-size:13.5px; color:#4A5568; margin:0 0 12px; }
+  button{ width:100%; padding:14px; border-radius:10px; border:none; font-size:15px; font-weight:700; cursor:pointer; }
+  .btn-primary{ background:#2F9E6E; color:#fff; }
+  .btn-primary:disabled{ background:#9AA39D; }
+  #log{ font-family:monospace; font-size:12px; background:#1C2430; color:#7CE0B0; padding:12px; border-radius:10px; white-space:pre-wrap; word-break:break-word; max-height:200px; overflow-y:auto; }
+  .status{ font-size:13px; font-weight:700; margin-bottom:8px; }
+  .ok{ color:#2F9E6E; } .bad{ color:#D64550; } .pending{ color:#C98A12; }
+</style>
+</head>
+<body>
+<h1>🔔 Push Notification Test</h1>
+
+<div class="step">
+  <h2>Step 1: Enable notifications</h2>
+  <p>This registers a background worker and subscribes this device to push notifications.</p>
+  <div class="status pending" id="subStatus">Not subscribed yet</div>
+  <button class="btn-primary" id="btnSubscribe" onclick="subscribe()">Enable notifications</button>
+</div>
+
+<div class="step">
+  <h2>Step 2: Send a test notification</h2>
+  <p>This sends a real push notification to this device from the server.</p>
+  <button class="btn-primary" id="btnSend" onclick="sendTest()" disabled>Send test notification</button>
+</div>
+
+<div class="step">
+  <h2>Log</h2>
+  <div id="log">Waiting...</div>
+</div>
+
+<script>
+// Public VAPID key (safe to expose in client code)
+const VAPID_PUBLIC_KEY = 'BEKunZvxY8GfpUzGFOz11ZMBdOWlldjLgJfFT48TYrW3PDtO25K230RWRMNovVgsBuMvMSjH5hcoLc6u3LwIg8Q';
+
+let currentSubscription = null;
+
+function log(msg){
+  const el = document.getElementById('log');
+  el.textContent += '\n' + msg;
+  el.scrollTop = el.scrollHeight;
+  console.log(msg);
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+function setStatus(text, cls){
+  const el = document.getElementById('subStatus');
+  el.textContent = text;
+  el.className = 'status ' + cls;
+}
+
+async function subscribe(){
+  try {
+    if (!('serviceWorker' in navigator)) { log('❌ Service workers not supported in this browser.'); return; }
+    if (!('PushManager' in window)) { log('❌ Push notifications not supported in this browser.'); return; }
+
+    log('Registering service worker...');
+    const reg = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    log('✅ Service worker ready.');
+
+    log('Requesting notification permission...');
+    const perm = await Notification.requestPermission();
+    log('Permission: ' + perm);
+    if (perm !== 'granted') { setStatus('Permission denied', 'bad'); return; }
+
+    log('Subscribing to push...');
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    currentSubscription = sub.toJSON();
+    log('✅ Subscribed. Endpoint: ' + currentSubscription.endpoint.slice(0, 60) + '...');
+    setStatus('Subscribed \u2713', 'ok');
+    document.getElementById('btnSend').disabled = false;
+    document.getElementById('btnSubscribe').textContent = 'Re-subscribe';
+  } catch (err) {
+    log('❌ Error: ' + err.message);
+    setStatus('Error - see log', 'bad');
+  }
+}
+
+async function sendTest(){
+  if (!currentSubscription) { log('❌ Not subscribed yet.'); return; }
+  log('Sending test notification via server...');
+  try {
+    const res = await fetch('/.netlify/functions/send-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subscription: currentSubscription,
+        title: 'Test notification',
+        body: 'If you can see this, push notifications work! 🎉'
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      log('✅ Server accepted the push. Check your notifications now.');
+    } else {
+      log('❌ Server error: ' + JSON.stringify(data));
+    }
+  } catch (err) {
+    log('❌ Request failed: ' + err.message);
+  }
+}
+
+// Auto-check on load if already subscribed
+window.addEventListener('load', async () => {
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        currentSubscription = sub.toJSON();
+        setStatus('Subscribed \u2713', 'ok');
+        document.getElementById('btnSend').disabled = false;
+        log('Already subscribed from a previous visit.');
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
