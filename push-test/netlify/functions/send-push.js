@@ -1,4 +1,4 @@
-const webPush = require('web-push');
+const { sendWebPush } = require('./webpush-lite');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -8,8 +8,8 @@ exports.handler = async (event) => {
   try {
     const { subscription, title, body, url } = JSON.parse(event.body);
 
-    if (!subscription || !subscription.endpoint) {
-      return { statusCode: 400, body: JSON.stringify({ ok: false, error: 'Missing subscription' }) };
+    if (!subscription || !subscription.endpoint || !subscription.keys) {
+      return { statusCode: 400, body: JSON.stringify({ ok: false, error: 'Missing or invalid subscription' }) };
     }
 
     const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
@@ -19,30 +19,16 @@ exports.handler = async (event) => {
       return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'VAPID keys not configured on the server' }) };
     }
 
-    webPush.setVapidDetails(
-      'mailto:admin@example.com',
+    await sendWebPush(
+      subscription,
+      { title: title || 'Notification', body: body || '', url: url || '/' },
       vapidPublicKey,
-      vapidPrivateKey
+      vapidPrivateKey,
+      'mailto:admin@example.com'
     );
-
-    const payload = JSON.stringify({
-      title: title || 'Notification',
-      body: body || '',
-      url: url || '/'
-    });
-
-    await webPush.sendNotification(subscription, payload);
 
     return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   } catch (err) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        ok: false,
-        error: err.message,
-        statusCode: err.statusCode || null,
-        details: err.body || null
-      })
-    };
+    return { statusCode: 500, body: JSON.stringify({ ok: false, error: err.message }) };
   }
 };

@@ -21,7 +21,7 @@
 </style>
 </head>
 <body>
-<h1>🔔 Push Notification Test</h1>
+<h1>🔔 Push Notification Test (v2 - no dependencies)</h1>
 
 <div class="step">
   <h2>Step 1: Enable notifications</h2>
@@ -32,7 +32,7 @@
 
 <div class="step">
   <h2>Step 2: Send a test notification</h2>
-  <p>This sends a real push notification to this device from the server.</p>
+  <p>This sends a real push notification to this device from the server (using our own dependency-free code this time).</p>
   <button class="btn-primary" id="btnSend" onclick="sendTest()" disabled>Send test notification</button>
 </div>
 
@@ -42,7 +42,6 @@
 </div>
 
 <script>
-// Public VAPID key (safe to expose in client code)
 const VAPID_PUBLIC_KEY = 'BEKunZvxY8GfpUzGFOz11ZMBdOWlldjLgJfFT48TYrW3PDtO25K230RWRMNovVgsBuMvMSjH5hcoLc6u3LwIg8Q';
 
 let currentSubscription = null;
@@ -105,15 +104,15 @@ async function subscribe(){
 
 async function sendTest(){
   if (!currentSubscription) { log('❌ Not subscribed yet.'); return; }
-  log('Sending test notification via server...');
+  log('Sending test notification via server (dependency-free version)...');
   try {
     const res = await fetch('/.netlify/functions/send-push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subscription: currentSubscription,
-        title: 'Test notification',
-        body: 'If you can see this, push notifications work! 🎉'
+        title: 'Test notification (v2)',
+        body: 'Dependency-free version works! 🎉'
       })
     });
     const data = await res.json();
@@ -127,7 +126,6 @@ async function sendTest(){
   }
 }
 
-// Auto-check on load if already subscribed
 window.addEventListener('load', async () => {
   if ('serviceWorker' in navigator) {
     const reg = await navigator.serviceWorker.getRegistration();
